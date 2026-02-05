@@ -1,0 +1,23 @@
+{
+  "name": "hms-manual-generator",
+  "version": "1.0.0",
+  "description": "Generate PDF manual from Bambu Lab HMS error codes wiki pages",
+  "main": "generate_hms_manual.js",
+  "scripts": {
+    "start": "node generate_hms_manual.js",
+    "generate": "node generate_hms_manual.js ./url_to_codes_mapping.json ./P1_Series_HMS_Manual.pdf"
+  },
+  "keywords": [
+    "bambu-lab",
+    "hms",
+    "manual",
+    "pdf"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "jsdom": "^28.0.0",
+    "pdfkit": "^0.14.0",
+    "puppeteer": "^22.0.0"
+  }
+}
