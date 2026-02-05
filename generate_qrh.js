@@ -48,9 +48,9 @@ async function main() {
         const primCode = title.split(":")[0].trim().toLowerCase().replace("hms_", "").toUpperCase().trim().replaceAll("_", "-")
         const errorName = title.split(":")?.slice(1)?.join(":")?.replaceAll(/\s+/g, " ").trim() || "Unknown Error";
         codes.push(primCode)
-        let synonyms = (element.querySelector(".text-tiny")?.querySelector("i") || element.querySelector(".text-tiny"))?.textContent?.replaceAll(/\s+/g, " ")?.split(", ");
+        let synonyms = (element.querySelector(".text-tiny")?.querySelector("i") || element.querySelector(".text-tiny"))?.textContent?.replaceAll(/\s+/g, "")?.replaceAll("，", ",")?.split(",");
         if (synonyms == undefined) {
-            synonyms = Array.from(element.querySelectorAll("p")).filter(ele => charIsInt(ele.textContent?.toLowerCase()?.replace("synonyms:", "")?.trim()?.charAt(0)))[0]?.textContent?.toLowerCase()?.replace("synonyms:", "")?.toUpperCase().replaceAll(/\s+/g, " ").split(", ");
+            synonyms = Array.from(element.querySelectorAll("p")).filter(ele => charIsInt(ele.textContent?.toLowerCase()?.replace("synonyms:", "")?.trim()?.charAt(0)))[0]?.textContent?.toLowerCase()?.replace("synonyms:", "")?.toUpperCase().replaceAll(/\s+/g, "").replaceAll("，", ",").split(",");
             if (synonyms == undefined) return console.log("Unable to find synonyms for blockquote: ", element.outerHTML)
         }
         synonyms = synonyms.map(cd => cd.trim())
@@ -80,27 +80,23 @@ async function main() {
         return 0;
     })
 
+    for (let i = 0; i < entries.length; i++) {
+        entries[i].name = entries[i].name.replaceAll(/Slot[-\s]?[0-9]+[\s]/gi, "Slot ")
+            .replaceAll(/Slot[-\s]?[0-9]+/gi, "Slot X")
+            .replaceAll(/Heater[-\s]?[A-Za-z0-9][\s]/gi, "Heater ")
+            .replaceAll(/AMS[-\s]?[A-Za-z0-9][\s]/gi, "AMS ")
+            .replaceAll(/Motor[-\s]?[A-Za-z0-9][\s]/gi, "Motor ")
+            .replaceAll(/Valve[-\s]?[A-Za-z0-9][\s]/gi, "Valve ")
+            .replaceAll(/Sensor[-\s]?[A-Za-z0-9][\s]/gi, "Sensor ")
+            .replaceAll(/RFID[-\s]?[A-Za-z0-9][\s]/gi, "RFID ")
+            .replaceAll(/Position[-\s]?[A-Za-z0-9][\s]/gi, "Position X ")
+            .replaceAll(/Station[-\s]?[A-Za-z0-9][\s]/gi, "Station X ")
+            .replaceAll(/Hotend[-\s]?[A-Za-z0-9][\s]/gi, "Hotend ")
+            .replaceAll(/AMS[-\s]?HT[-\s]?[A-Za-z0-9][\s]/gi, "AMS-HT ")
+    }
+
     console.log("Parsed all entries, writing to file...")
     fs.writeFileSync("qrhEntries.json", JSON.stringify(entries, null, 2))
-
-    let appendix = []
-
-    entries.forEach(issue => {
-        const primCode = issue.codes[0]
-        issue.codes.slice(1).forEach(code => {
-            appendix.push({ "primary": primCode, "alternate" : code })
-        })
-    }) //Create array of all alternate codes mapping to their primary code
-
-    appendix = appendix.sort((a, b) => { //Sort numerically
-        const aNums = a["alternate"].split("-").map(c => parseInt(c, 16))
-        const bNums = b["alternate"].split("-").map(c => parseInt(c, 16))
-        for (let i = 0; i < 4; i++) {
-            if (aNums[i] < bNums[i]) return -1;
-            else if (bNums[i] < aNums[i]) return 1;
-        }
-        return 0;
-    })
 
     console.log("Generating QR Codes...")
     for (let x = 0; x < entries.length; x++) {
@@ -110,7 +106,7 @@ async function main() {
     }
 
     console.log('\nGenerating PDF...');
-    generatePDF(entries, appendix, ["P1S"], outputPath);
+    generatePDF(entries, ["P1S"], outputPath);
 
     console.log(`\nPDF generated successfully: ${outputPath}`);
     console.log(`Total entries: ${entries.length}`);
@@ -261,7 +257,7 @@ async function writeEntry(doc, entry, products, sectionSpacing, qrSpacing, newPa
     if (endY > doc.y) doc.y = endY;
 }
 
-async function generatePDF(entries, appendix, products, outputPath) {
+async function generatePDF(entries, products, outputPath) {
 
     if (products.length != 0) {
         entries = entries.filter(entry => {
@@ -277,71 +273,128 @@ async function generatePDF(entries, appendix, products, outputPath) {
                 }
             });
             return result;
-        })
+        });
     }
+    const appendix = generateIndex(entries);
 
-  const sectionSpacing = 30
-  const qrSpacing = 20
+    const sectionSpacing = 30
+    const qrSpacing = 20
 
-  const doc = new PDFDocument({
-    size: 'LETTER',
-    margins: { top: 50, bottom: 50, left: 50, right: 50 }
-  });
+    const doc = new PDFDocument({
+        size: 'LETTER',
+        margins: { top: 50, bottom: 20, left: 50, right: 50 }
+    });
+    
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
   
-  const stream = fs.createWriteStream(outputPath);
-  doc.pipe(stream);
+    // Title page
+    doc.fontSize(24).font('Helvetica-Bold')
+        .text(`Bambu Lab ${(products.length > 0) ? products.join(", ").toUpperCase() : "3D Printers"}`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(20)
+        .text('HMS Error Code Quick Reference', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(12).font('Helvetica')
+        .text('Scan QR codes to access troubleshooting guides', { align: 'center' });
+    doc.moveDown(1);
+    doc.fontSize(10)
+        .text(`Generated: ${new Date().toLocaleDateString()} by Antony Rinaldi`, { align: 'center' });
   
-  // Title page
-  doc.fontSize(24).font('Helvetica-Bold')
-     .text(`Bambu Lab ${(products.length > 0) ? products.join(", ").toUpperCase() : "3D Printers"}`, { align: 'center' });
-  doc.moveDown(0.5);
-  doc.fontSize(20)
-     .text('HMS Error Code Quick Reference', { align: 'center' });
-  doc.moveDown(0.5);
-  doc.fontSize(12).font('Helvetica')
-     .text('Scan QR codes to access troubleshooting guides', { align: 'center' });
-  doc.moveDown(1);
-  doc.fontSize(10)
-     .text(`Generated: ${new Date().toLocaleDateString()} by Antony Rinaldi`, { align: 'center' });
-  
-  const contents = {};
-  // Content pages - 2 entries per page for readability
-  let pageNum = 0
-  entries.forEach((entry, idx) => {
-    const sectionHeight = getSectionHeight(entry, products, sectionSpacing, qrSpacing)
-    let newPage = false;
-    if (sectionHeight >= doc.page.height - doc.page.margins.top) return console.log("Entry for issue " + entry.codes[0] + " is too tall for page!");
-    if (idx == 0 || doc.y + sectionSpacing + sectionHeight > doc.page.height - doc.page.margins.bottom) {
-        newPage = true
-        // if (idx != 0) {
-        //     if (pageNum % 2 == 1) {//Odd pages are on the left side
-        //         doc.fontSize(8).font('Helvetica').fillColor("#000").text(pageNum, doc.page.margins.left, doc.page.height - doc.page.margins.bottom)
-        //     } else {
-        //         doc.fontSize(8).font('Helvetica').fillColor("#000").text(pageNum, doc.page.width - doc.page.margins.right, doc.page.height - doc.page.margins.bottom)
-        //     }
-        // }
-        doc.addPage()
-        pageNum++
-        doc.moveTo(doc.page.margins.left, doc.page.margins.top)
-        doc.x = doc.page.margins.left
-        doc.y = doc.page.margins.top
-    }
-    contents[entry.codes[0]] = pageNum;
-    writeEntry(doc, entry, products, sectionSpacing, qrSpacing, newPage);
-  })
+    const contents = {};
+    // Content pages - 2 entries per page for readability
+    let pageNum = 0
+    entries.forEach((entry, idx) => {
+        const sectionHeight = getSectionHeight(entry, products, sectionSpacing, qrSpacing)
+        let newPage = false;
+        if (sectionHeight >= doc.page.height - doc.page.margins.top) return console.log("Entry for issue " + entry.codes[0] + " is too tall for page!");
+        if (idx == 0 || doc.y + sectionSpacing + sectionHeight > doc.page.height - doc.page.margins.bottom - 10) {
+            newPage = true
+            doc.addPage()
+            pageNum++
+            doc.fontSize(8).font('Helvetica').fillColor("#000").text(pageNum, doc.page.margins.left, doc.page.height - doc.page.margins.bottom - 10, { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: "center"})
+            doc.moveTo(doc.page.margins.left, doc.page.margins.top)
+            doc.x = doc.page.margins.left
+            doc.y = doc.page.margins.top
+        }
+        contents[entry.codes[0]] = pageNum;
+        writeEntry(doc, entry, products, sectionSpacing, qrSpacing, newPage);
+    })
 
 //   if (pageNum % 2 == 1) {//Odd pages are on the left side
 //     doc.fontSize(8).font('Helvetica').fillColor("#000").text(pageNum, doc.page.margins.left, doc.page.height - doc.page.margins.bottom)
 //   } else {
 //     doc.fontSize(8).font('Helvetica').fillColor("#000").text(pageNum, doc.page.width - doc.page.margins.right, doc.page.height - doc.page.margins.bottom)
 //   }
+
+    const colSpacing = 10
+    //Write index
+    doc.addPage()
+    doc.fontSize(14).font('Helvetica-Bold').fillColor("#000").text("Index", doc.page.margins.left, doc.page.margins.top, { width: doc.page.width - doc.page.margins.left - doc.page.margins.right, align: "center"})
+    //Gonna do 2 columns i think
+    const columnCount = 4;
+    const colFontSize = 8;
+    const index = appendix.map(entry => {
+        return entry.alternate + ": Pg " + contents[entry.primary] + "\n"
+    })
+    let counted = 0
+    let colHeight = 0;
+    let tmp = index[0];
+    const colWidth = (doc.page.width - doc.page.margins.left - doc.page.margins.right - colSpacing*(columnCount-1))/columnCount
+    while (getTextHeight(colFontSize, 'Helvetica', tmp.trim(), {width: colWidth}) + doc.y + sectionSpacing<= doc.page.height - doc.page.margins.bottom - 10 ) {
+        tmp += index[++colHeight];
+    }
+    const topY = doc.y + sectionSpacing
+    
+    for (let i = 0; i < columnCount && counted < index.length; i++) {
+        doc.fontSize(colFontSize).font('Helvetica').fillColor("#222").text(index.slice(counted, (counted+colHeight > index.length) ? index.length : counted+colHeight).join("").trim(), doc.page.margins.left + (i % columnCount)*(colWidth + colSpacing), topY, { width: colWidth})
+        counted+=colHeight
+    }
+    if (counted < index.length) {
+        tmp = index[counted];
+        colHeight = 0;
+        while (getTextHeight(colFontSize, 'Helvetica', tmp.trim(), {width: colWidth}) + doc.page.margins.top + sectionSpacing<= doc.page.height - doc.page.margins.bottom - 10 ) {
+            tmp += index[counted + ++colHeight];
+        }
+    }
+    while (counted < index.length) {
+        doc.addPage();
+        for (let i = 0; i < columnCount && counted < index.length; i++) {
+            doc.fontSize(colFontSize).font('Helvetica').fillColor("#222").text(index.slice(counted, (counted+colHeight > index.length) ? index.length : counted+colHeight).join("").trim(), doc.page.margins.left + (i % columnCount)*(colWidth + colSpacing), doc.page.margins.top, { width: colWidth})
+            counted+=colHeight
+        }
+    }
+
+
+
+
+    doc.end();
   
-  doc.end();
-  
-  return new Promise((resolve, reject) => {
-    stream.on('finish', resolve);
-    stream.on('error', reject);
-  });
+    return new Promise((resolve, reject) => {
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+    });
+}
+
+function generateIndex(entries) {
+    let appendix = []
+    entries.forEach(issue => {
+        const primCode = issue.codes[0]
+        issue.codes.forEach(code => {
+            appendix.push({ "primary": primCode, "alternate" : code })
+        })
+    }) //Create array of all alternate codes mapping to their primary code
+
+    appendix = appendix.sort((a, b) => { //Sort numerically
+        const aNums = a["alternate"].split("-").map(c => parseInt(c, 16))
+        const bNums = b["alternate"].split("-").map(c => parseInt(c, 16))
+        for (let i = 0; i < 4; i++) {
+            if (aNums[i] < bNums[i]) return -1;
+            else if (bNums[i] < aNums[i]) return 1;
+        }
+        return 0;
+    })
+    return appendix;
 }
 
 main()
